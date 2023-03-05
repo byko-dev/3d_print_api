@@ -1,9 +1,8 @@
 package com.byko.api_3d_printing.smtp;
 
 import com.byko.api_3d_printing.database.ConfigurationData;
-import com.byko.api_3d_printing.database.ConfigurationRepository;
+import com.byko.api_3d_printing.database.repository.ConfigurationRepository;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Bean;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.mail.javamail.MimeMessageHelper;
