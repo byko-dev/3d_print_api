@@ -1,17 +1,20 @@
 package com.byko.api_3d_printing.web_controllers;
 
+import com.byko.api_3d_printing.database.repository.*;
+import com.byko.api_3d_printing.exceptions.ResourceNotFoundException;
+import com.byko.api_3d_printing.exceptions.UnauthorizedException;
+import com.byko.api_3d_printing.services.ConfigurationService;
+import com.byko.api_3d_printing.services.ProjectService;
 import com.byko.api_3d_printing.smtp.MailService;
+import com.byko.api_3d_printing.utils.CaptchaValidation;
 import com.byko.api_3d_printing.utils.RandomString;
 import com.byko.api_3d_printing.utils.Utils;
 import com.byko.api_3d_printing.configuration.MongoUserDetails;
 import com.byko.api_3d_printing.configuration.jwt.JwtUtils;
 import com.byko.api_3d_printing.database.*;
-import com.byko.api_3d_printing.database.enums.Status;
 import com.byko.api_3d_printing.database.enums.User;
 import com.byko.api_3d_printing.model.*;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
-import org.springframework.cache.support.NullValue;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -28,20 +31,14 @@ import java.util.Optional;
 
 @CrossOrigin(origins = "*") // allow all origins
 @RestController
+@RequestMapping("/admin")
 public class AdminWebController {
 
     @Value("${file.upload-dir}")
     private String FILE_DIRECTORY;
 
-    @Value("${domain.url}")
-    private String DOMAIN_URL;
-
     @Value("${file.image-dir}")
     private String IMAGES_DIRECTORY;
-
-    @Value("${captcha.secrect.key}")
-    private String captchaSecretKey;
-
     private AdminRepository adminRepository;
     private ConversationRepository conversationRepository;
     private ProjectsRepository projectsRepository;
@@ -52,12 +49,17 @@ public class AdminWebController {
     private ImagesRepository imagesRepository;
     private ConfigurationRepository configurationRepository;
     private MailService mailService;
+    private CaptchaValidation captchaValidator;
+
+    private ProjectService projectService;
+    private ConfigurationService configurationService;
+
 
     public AdminWebController(AdminRepository adminRepository, ConversationRepository conversationRepository,
                               ProjectsRepository projectsRepository, BCryptPasswordEncoder encoder, JwtUtils jwtUtils,
                               AuthenticationManager authenticationManager, MongoUserDetails mongoUserDetails,
                               ImagesRepository imagesRepository, ConfigurationRepository configurationRepository,
-                              MailService mailService){
+                              MailService mailService, CaptchaValidation captchaValidator, ProjectService projectService){
         this.adminRepository = adminRepository;
         this.conversationRepository = conversationRepository;
         this.projectsRepository = projectsRepository;
@@ -68,6 +70,8 @@ public class AdminWebController {
         this.imagesRepository = imagesRepository;
         this.configurationRepository = configurationRepository;
         this.mailService = mailService;
+        this.captchaValidator = captchaValidator;
+        this.projectService = projectService;
     }
 
     private AdminData getAdminAccount(HttpServletRequest request){
@@ -97,36 +101,29 @@ public class AdminWebController {
 
     @RequestMapping(value = "/login", method = RequestMethod.POST)
     public ResponseEntity<?> getJwtToken(@RequestBody LoginRequest loginRequest){
-        if(Utils.captchaValidator(loginRequest.getCaptchaResponse(), captchaSecretKey)){
-            try{
-                authenticationManager.authenticate(
-                        new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword()));
-            }catch(BadCredentialsException e){
-                return new ResponseEntity<>(new StatusModel("Login failed!"), HttpStatus.BAD_REQUEST);
-            }
-            final UserDetails userDetails = mongoUserDetails.loadUserByUsername(loginRequest.getUsername());
-            final String jwt = jwtUtils.generateToken(userDetails);
+        if(!captchaValidator.isValid(loginRequest.getCaptchaResponse()))
+            throw new UnauthorizedException("Captcha verification error!");
 
-            setAdminLastActivity(adminRepository.findByUsername(userDetails.getUsername()));
-
-            return new ResponseEntity<>(new AuthenticationResponse(jwt), HttpStatus.OK);
-        }else{
-            return new ResponseEntity<>(new StatusModel("Captcha verification error!"), HttpStatus.UNAUTHORIZED);
+        try{
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword()));
+        }catch(BadCredentialsException e){
+            throw new UnauthorizedException("Login failed!");
         }
+        final UserDetails userDetails = mongoUserDetails.loadUserByUsername(loginRequest.getUsername());
+        final String jwt = jwtUtils.generateToken(userDetails);
+
+        setAdminLastActivity(adminRepository.findByUsername(userDetails.getUsername()));
+
+        return new ResponseEntity<>(new AuthenticationResponse(jwt), HttpStatus.OK);
     }
 
     @RequestMapping(value = "/admin/send/response", method = RequestMethod.POST)
-    public ResponseEntity<?> sendResponseForClient(MultipartHttpServletRequest request){
-        AdminData adminData = getAdminAccount(request);
-
-        if(adminData != null){
-            setAdminLastActivity(adminData);
-
-            return Utils.sendResponse(request, projectsRepository, conversationRepository, FILE_DIRECTORY,
-                    DOMAIN_URL, User.ADMIN);
-        }
-
-        return new ResponseEntity<>(new StatusModel("UNAUTHORIZED"), HttpStatus.UNAUTHORIZED);
+    public ResponseEntity<?> sendResponseForClient(@RequestParam String projectid,
+                                                   @RequestParam String description,
+                                                   @RequestParam MultipartFile file,
+                                                   HttpServletRequest request){
+        return projectService.sendResponse(projectid, description, file, request.getRemoteAddr(), User.ADMIN);
     }
 
     @RequestMapping(value = "/projects/list", method = RequestMethod.GET)
@@ -147,9 +144,10 @@ public class AdminWebController {
         if(adminData != null){
             setAdminLastActivity(adminData);
 
-            ProjectsData projectsData = projectsRepository.findByConversationKey(changeStatusRequest.projectId);
+            ProjectsData projectsData = projectsRepository.findByConversationKey(changeStatusRequest.projectId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Project data was not found!"));
 
-            if(projectsData!=null && changeStatusRequest.newStatus>=0){
+            if(changeStatusRequest.newStatus>=0){
                 projectsData.setOrderStatus(changeStatusRequest.newStatus);
                 projectsRepository.save(projectsData);
                 return new ResponseEntity<>(new StatusModel(changeStatusRequest.newStatus.toString()), HttpStatus.OK);
@@ -182,22 +180,13 @@ public class AdminWebController {
 
     @RequestMapping(value = "/remove/project", method = RequestMethod.DELETE)
     public ResponseEntity<?> removeProject(@RequestParam("projectid") String projectId, HttpServletRequest request){
-        AdminData adminData = getAdminAccount(request);
+        ProjectsData projectsData = projectsRepository.findByConversationKey(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project data was not found!"));
 
-        if(adminData != null){
-            setAdminLastActivity(adminData);
-
-            ProjectsData projectsData = projectsRepository.findByConversationKey(projectId);
-            if(projectsData != null){
-                Utils.removeProjectDirectory(FILE_DIRECTORY, projectsData.getConversationKey());
-                conversationRepository.deleteAllByConversationId(projectsData.getConversationKey());
-                projectsRepository.delete(projectsData);
-                return new ResponseEntity<>(new StatusModel("OK"), HttpStatus.OK);
-            }else{
-                return new ResponseEntity<>(new StatusModel("Project doesn't exists"), HttpStatus.BAD_REQUEST);
-            }
-        }
-        return new ResponseEntity<>(new StatusModel("UNAUTHORIZED"), HttpStatus.UNAUTHORIZED);
+        Utils.removeProjectDirectory(FILE_DIRECTORY, projectsData.getConversationKey());
+        conversationRepository.deleteAllByConversationId(projectsData.getConversationKey());
+        projectsRepository.delete(projectsData);
+        return new ResponseEntity<>(new StatusModel("OK"), HttpStatus.OK);
     }
 
     @RequestMapping(value = "/image/add", method = RequestMethod.POST)
@@ -317,22 +306,18 @@ public class AdminWebController {
     }
     @RequestMapping(value = "/check/smtp", method = RequestMethod.GET)
     public ResponseEntity<?> getSmtpStatus(HttpServletRequest httpServletRequest){
-        AdminData adminData = getAdminAccount(httpServletRequest);
-        if(adminData != null){
-            ConfigurationData data = configurationRepository.findAll().get(0);
+        ConfigurationData data = configurationRepository.findAll().get(0);
 
-            if(data != null && data.isEmailEnable()){
-                try {
-                    mailService.checkStmpStatusMessage();
-                    return new ResponseEntity<>(new StatusModel("Mail service is working well."), HttpStatus.OK);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    return new ResponseEntity<>(new StatusModel("Mail service isn't working."), HttpStatus.INTERNAL_SERVER_ERROR);
-                }
-            }else{
-                return new ResponseEntity<>(new StatusModel("Mail service is disabled!"), HttpStatus.OK);
+        if(data != null && data.isEmailEnable()){
+            try {
+                mailService.checkStmpStatusMessage();
+                return new ResponseEntity<>(new StatusModel("Mail service is working well."), HttpStatus.OK);
+            } catch (Exception e) {
+                e.printStackTrace();
+                return new ResponseEntity<>(new StatusModel("Mail service isn't working."), HttpStatus.INTERNAL_SERVER_ERROR);
             }
+        }else{
+            return new ResponseEntity<>(new StatusModel("Mail service is disabled!"), HttpStatus.OK);
         }
-        return new ResponseEntity<>(new StatusModel("UNAUTHORIZED"), HttpStatus.UNAUTHORIZED);
     }
 }

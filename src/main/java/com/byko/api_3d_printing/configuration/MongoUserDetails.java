@@ -1,7 +1,7 @@
 package com.byko.api_3d_printing.configuration;
 
 import com.byko.api_3d_printing.database.AdminData;
-import com.byko.api_3d_printing.database.AdminRepository;
+import com.byko.api_3d_printing.database.repository.AdminRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.userdetails.User;

@@ -1,5 +1,5 @@
 package com.byko.api_3d_printing.database.enums;
 
-public enum Status {
+public enum ProjectStatus {
     CLOSED, OPEN
 }
