@@ -1,9 +1,12 @@
 package com.byko.api_3d_printing.web_controllers;
 
 import com.byko.api_3d_printing.database.repository.*;
+import com.byko.api_3d_printing.exceptions.BadRequestException;
 import com.byko.api_3d_printing.exceptions.ResourceNotFoundException;
 import com.byko.api_3d_printing.exceptions.UnauthorizedException;
+import com.byko.api_3d_printing.services.AdminService;
 import com.byko.api_3d_printing.services.ConfigurationService;
+import com.byko.api_3d_printing.services.ConversationService;
 import com.byko.api_3d_printing.services.ProjectService;
 import com.byko.api_3d_printing.smtp.MailService;
 import com.byko.api_3d_printing.utils.CaptchaValidation;
@@ -24,10 +27,9 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.multipart.MultipartHttpServletRequest;
 
 import javax.servlet.http.HttpServletRequest;
-import java.util.Optional;
+import javax.validation.Valid;
 
 @CrossOrigin(origins = "*") // allow all origins
 @RestController
@@ -39,64 +41,52 @@ public class AdminWebController {
 
     @Value("${file.image-dir}")
     private String IMAGES_DIRECTORY;
-    private AdminRepository adminRepository;
-    private ConversationRepository conversationRepository;
-    private ProjectsRepository projectsRepository;
+
     private BCryptPasswordEncoder encoder;
     private JwtUtils jwtUtils;
     private AuthenticationManager authenticationManager;
     private MongoUserDetails mongoUserDetails;
     private ImagesRepository imagesRepository;
-    private ConfigurationRepository configurationRepository;
     private MailService mailService;
     private CaptchaValidation captchaValidator;
 
     private ProjectService projectService;
+    private AdminService adminService;
     private ConfigurationService configurationService;
+    private ConversationService conversationService;
 
 
-    public AdminWebController(AdminRepository adminRepository, ConversationRepository conversationRepository,
-                              ProjectsRepository projectsRepository, BCryptPasswordEncoder encoder, JwtUtils jwtUtils,
+    public AdminWebController(BCryptPasswordEncoder encoder, JwtUtils jwtUtils,
                               AuthenticationManager authenticationManager, MongoUserDetails mongoUserDetails,
-                              ImagesRepository imagesRepository, ConfigurationRepository configurationRepository,
-                              MailService mailService, CaptchaValidation captchaValidator, ProjectService projectService){
-        this.adminRepository = adminRepository;
-        this.conversationRepository = conversationRepository;
-        this.projectsRepository = projectsRepository;
+                              ImagesRepository imagesRepository,
+                              MailService mailService, CaptchaValidation captchaValidator, ProjectService projectService,
+                              AdminService adminService, ConfigurationService configurationService, ConversationService conversationService){
         this.encoder = encoder;
         this.jwtUtils = jwtUtils;
         this.authenticationManager = authenticationManager;
         this.mongoUserDetails = mongoUserDetails;
         this.imagesRepository = imagesRepository;
-        this.configurationRepository = configurationRepository;
         this.mailService = mailService;
         this.captchaValidator = captchaValidator;
         this.projectService = projectService;
+        this.adminService = adminService;
+        this.configurationService = configurationService;
+        this.conversationService = conversationService;
     }
 
-    private AdminData getAdminAccount(HttpServletRequest request){
-        String authorizationHeader = request.getHeader("Authorization");
-        String username = jwtUtils.extractUsername(authorizationHeader);
-        AdminData adminData = adminRepository.findByUsername(username);
-        return adminData;
-    }
 
-    private void setAdminLastActivity(AdminData adminData){
-        adminData.setLastTimeActivity(System.currentTimeMillis());
-        adminRepository.save(adminData);
-    }
 
     @RequestMapping(value = "/activity", method = RequestMethod.GET)
     public ResponseEntity<?> getLastTimeAdminActivity(){
-        AdminData adminData = adminRepository.findFirstByOrderByLastTimeActivityDesc();
+        AdminData adminData = adminService.getLastActiveAdminData();
         Long lastTimeActive = System.currentTimeMillis() - adminData.getLastTimeActivity();
 
         return new ResponseEntity<>(new LastTimeActiveResponse((lastTimeActive/60000)), HttpStatus.OK);
     }
 
     @RequestMapping(value = "/token/valid", method = RequestMethod.GET)
-    public ResponseEntity<?> checkTokenIsValid(){
-        return new ResponseEntity<>(new StatusModel("OK"), HttpStatus.OK);
+    public ResponseEntity<?> checkTokenIsValid(HttpServletRequest request){
+        return new ResponseEntity<>(new Status("OK", request.getServletPath()), HttpStatus.OK);
     }
 
     @RequestMapping(value = "/login", method = RequestMethod.POST)
@@ -113,7 +103,7 @@ public class AdminWebController {
         final UserDetails userDetails = mongoUserDetails.loadUserByUsername(loginRequest.getUsername());
         final String jwt = jwtUtils.generateToken(userDetails);
 
-        setAdminLastActivity(adminRepository.findByUsername(userDetails.getUsername()));
+        adminService.setAdminLastActivity(adminService.getByUsername(loginRequest.getUsername()));
 
         return new ResponseEntity<>(new AuthenticationResponse(jwt), HttpStatus.OK);
     }
@@ -127,197 +117,138 @@ public class AdminWebController {
     }
 
     @RequestMapping(value = "/projects/list", method = RequestMethod.GET)
-    public ResponseEntity<?> getProjectsList(HttpServletRequest request){
-        AdminData adminData = getAdminAccount(request);
-        if (adminData != null) {
-            setAdminLastActivity(adminData);
-
-            return new ResponseEntity<>(projectsRepository.findAll(), HttpStatus.OK);
-        }
-        return new ResponseEntity<>(new StatusModel("UNAUTHORIZED"), HttpStatus.UNAUTHORIZED);
+    public ResponseEntity<?> getProjectsList(){
+        return new ResponseEntity<>(projectService.getAll(), HttpStatus.OK);
     }
 
     @RequestMapping(value = "/change/project/status", method = RequestMethod.PUT)
-    public ResponseEntity<?> changeProjectStatus(@RequestBody ChangeStatusRequest changeStatusRequest, HttpServletRequest request){
-        AdminData adminData = getAdminAccount(request);
+    public ResponseEntity<?> changeProjectStatus(@Valid @RequestBody ChangeStatusRequest changeStatusRequest, HttpServletRequest request){
+        ProjectsData projectsData = projectService.getByConversationKey(changeStatusRequest.getProjectId())
+                .orElseThrow(() -> new ResourceNotFoundException("Project data was not found!"));
 
-        if(adminData != null){
-            setAdminLastActivity(adminData);
-
-            ProjectsData projectsData = projectsRepository.findByConversationKey(changeStatusRequest.projectId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Project data was not found!"));
-
-            if(changeStatusRequest.newStatus>=0){
-                projectsData.setOrderStatus(changeStatusRequest.newStatus);
-                projectsRepository.save(projectsData);
-                return new ResponseEntity<>(new StatusModel(changeStatusRequest.newStatus.toString()), HttpStatus.OK);
-            }else{
-                return new ResponseEntity<>(new StatusModel("Project doesn't exists any more"), HttpStatus.BAD_REQUEST);
-            }
-        }
-
-        return new ResponseEntity<>(new StatusModel("UNAUTHORIZED"), HttpStatus.UNAUTHORIZED);
+        projectService.setOrderStatus(projectsData, changeStatusRequest.getNewStatus());
+        return new ResponseEntity<>(new Status(changeStatusRequest.getNewStatus().toString(), request.getServletPath()), HttpStatus.OK);
     }
 
     @RequestMapping(value = "/change/password", method = RequestMethod.PUT)
     public ResponseEntity<?> adminChangePasswordRequest(@RequestBody ChangePasswordRequest changePasswordRequest, HttpServletRequest request){
-        AdminData adminData = getAdminAccount(request);
-        if(adminData != null){
-            setAdminLastActivity(adminData);
+        AdminData adminData = adminService.getAdminAccount(request);
 
-            if(encoder.matches(changePasswordRequest.getPassword(), adminData.getPassword())){
-                adminData.setPassword(encoder.encode(changePasswordRequest.getNewPassword()));
-                adminRepository.save(adminData);
+        if(!encoder.matches(changePasswordRequest.getPassword(), adminData.getPassword()))
+            throw new BadRequestException("Passwords don't match");
 
-                return new ResponseEntity<>(new StatusModel("OK"), HttpStatus.OK);
-            }else{
-                return new ResponseEntity<>(new StatusModel("Wrong password"), HttpStatus.BAD_REQUEST);
-            }
-        }
+        adminService.changePassword(adminData, changePasswordRequest.getPassword());
 
-        return new ResponseEntity<>(new StatusModel("UNAUTHORIZED"), HttpStatus.UNAUTHORIZED);
+        return new ResponseEntity<>(new Status("OK", request.getServletPath()), HttpStatus.OK);
     }
 
     @RequestMapping(value = "/remove/project", method = RequestMethod.DELETE)
     public ResponseEntity<?> removeProject(@RequestParam("projectid") String projectId, HttpServletRequest request){
-        ProjectsData projectsData = projectsRepository.findByConversationKey(projectId)
+        ProjectsData projectsData = projectService.getByConversationKey(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project data was not found!"));
 
         Utils.removeProjectDirectory(FILE_DIRECTORY, projectsData.getConversationKey());
-        conversationRepository.deleteAllByConversationId(projectsData.getConversationKey());
-        projectsRepository.delete(projectsData);
-        return new ResponseEntity<>(new StatusModel("OK"), HttpStatus.OK);
+        conversationService.deleteAllByConversationId(projectsData.getConversationKey());
+        projectService.delete(projectsData);
+        return new ResponseEntity<>(new Status("OK", request.getServletPath()), HttpStatus.OK);
     }
 
     @RequestMapping(value = "/image/add", method = RequestMethod.POST)
-    public ResponseEntity<?> addNewImage(MultipartHttpServletRequest request){
-        AdminData adminData = getAdminAccount(request);
+    public ResponseEntity<?> addNewImage(@RequestParam(required = false) String description,
+                                         @RequestParam String title,
+                                         @RequestParam(required = false) String alt,
+                                         @RequestParam MultipartFile file,
+                                         HttpServletRequest request){
 
-        if(adminData != null){
-            setAdminLastActivity(adminData);
+        //required image and title
+        if(file == null || title == null)
+            throw new BadRequestException("Image and title of your project is required!");
 
-            String description = request.getParameter("description");
-            String title = request.getParameter("title");
-            String imageAlt = request.getParameter("alt");
-            MultipartFile multipartFile = request.getFile("file");
+        ImageData imageData = new ImageData();
 
-            if(multipartFile != null && title != null){ //required image and title
-                ImageData imageData = new ImageData();
+        imageData.setDescription(description);
+        imageData.setTitle(title);
+        imageData.setDate(Utils.getCurrentDate());
+        imageData.setImageAlt(alt);
 
-                imageData.setDescription(description);
-                imageData.setTitle(title);
-                imageData.setDate(Utils.getCurrentDate());
-                imageData.setImageAlt(imageAlt);
+        RandomString randomString = new RandomString(12);
+        imageData.setImageFileName(
+                Utils.saveImages(IMAGES_DIRECTORY, file, randomString.nextString()));
 
-                RandomString randomString = new RandomString(12);
-                imageData.setImageFileName(
-                        Utils.saveImages(IMAGES_DIRECTORY, multipartFile, randomString.nextString()));
-
-                imagesRepository.save(imageData);
-                return new ResponseEntity<>(new StatusModel("OK"), HttpStatus.OK);
-            }else {
-                return new ResponseEntity<>(new StatusModel("Image and title of your project is required!"), HttpStatus.BAD_REQUEST);
-            }
-        }
-        return new ResponseEntity<>(new StatusModel("UNAUTHORIZED"), HttpStatus.UNAUTHORIZED);
+        imagesRepository.save(imageData);
+        return new ResponseEntity<>(new Status("OK", request.getServletPath()), HttpStatus.OK);
     }
 
     @RequestMapping(value = "/image/delete", method = RequestMethod.DELETE)
     public ResponseEntity<?> deleteImage(@RequestParam("imageid") String imageId, HttpServletRequest request){
-        AdminData admin = getAdminAccount(request);
-        if(admin != null){
-            setAdminLastActivity(admin);
+        ImageData imageData = imagesRepository.findById(imageId)
+                .orElseThrow(() -> new ResourceNotFoundException("Image was not found!"));
 
-            Optional<ImageData> imageData = imagesRepository.findById(imageId);
-            if(imageData.isPresent()){
-                Utils.deleteImageFile(IMAGES_DIRECTORY, imageData.get().getImageFileName());
-                imagesRepository.delete(imageData.get());
-                return new ResponseEntity<>(new StatusModel("OK"), HttpStatus.OK);
-            }else{
-                return new ResponseEntity<>(new StatusModel("Image doesn't exists"), HttpStatus.BAD_REQUEST);
-            }
-        }
-        return new ResponseEntity<>(new StatusModel("UNAUTHORIZED"), HttpStatus.UNAUTHORIZED);
+        Utils.deleteImageFile(IMAGES_DIRECTORY, imageData.getImageFileName());
+        imagesRepository.delete(imageData);
+        return new ResponseEntity<>(new Status("OK", request.getServletPath()), HttpStatus.OK);
     }
 
     @RequestMapping(value = "/image/update", method = RequestMethod.POST)
-    public ResponseEntity<?> updateImageData(MultipartHttpServletRequest request){
-        AdminData adminData = getAdminAccount(request);
+    public ResponseEntity<?> updateImageData(@RequestParam String id,
+                                             @RequestParam String description,
+                                             @RequestParam String title,
+                                             @RequestParam String alt,
+                                             @RequestParam boolean changeDate,
+                                             HttpServletRequest request){
 
-        if(adminData != null){
-            setAdminLastActivity(adminData);
+        ImageData imageData = imagesRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Image was not found!"));
 
-            String description = request.getParameter("description");
-            String title = request.getParameter("title");
-            String changeDate = request.getParameter("changeDate");
-            String imageAlt = request.getParameter("alt");
+        if(title != null && !title.equals("")) imageData.setTitle(title);
+        if(description != null && !description.equals("")) imageData.setDescription(description);
+        if(alt != null && !alt.equals("")) imageData.setImageAlt(alt);
 
-            Optional<ImageData> imageData = imagesRepository.findById(request.getParameter("id"));
+        if(changeDate == true) imageData.setDate(Utils.getCurrentDate());
 
-            if(imageData.isPresent()){
-                if(title != null && !title.equals("")) imageData.get().setTitle(title);
-                if(description != null && !description.equals("")) imageData.get().setDescription(description);
-                if(imageAlt != null && !imageAlt.equals("")) imageData.get().setImageAlt(imageAlt);
+        imagesRepository.save(imageData);
 
-                //I couldn't do this with boolean variable btw
-                if(changeDate != null && changeDate.equals("true")) imageData.get().setDate(Utils.getCurrentDate());
-
-                imagesRepository.save(imageData.get());
-
-                return new ResponseEntity<>(new StatusModel("OK"), HttpStatus.OK);
-            }else{
-                return new ResponseEntity<>(new StatusModel("Image doesn't exists"), HttpStatus.BAD_REQUEST);
-            }
-        }
-        return new ResponseEntity<>(new StatusModel("UNAUTHORIZED"), HttpStatus.UNAUTHORIZED);
+        return new ResponseEntity<>(new Status("OK", request.getServletPath()), HttpStatus.OK);
     }
 
     @RequestMapping(value = "/configuration/update", method = RequestMethod.POST)
-    public ResponseEntity<?> changeConfiguration(@RequestBody ConfigurationUpdate configuration, HttpServletRequest httpServletRequest){
-        AdminData adminData = getAdminAccount(httpServletRequest);
-        if(adminData != null){
-            ConfigurationData data = configurationRepository.findAll().get(0);
-            if(data != null){
-                if(!configuration.getEmail().equals(""))
-                    data.setEmail(configuration.getEmail());
-                if(!configuration.getPassword().equals(""))
-                    data.setEmailPass(configuration.getPassword());
-                if(configuration.isEnabled() != data.isEmailEnable())
-                    data.setEmailEnable(configuration.isEnabled());
+    public ResponseEntity<?> changeConfiguration(@RequestBody ConfigurationUpdate configuration, HttpServletRequest request){
+        ConfigurationData data = configurationService.get()
+                .orElse(configurationService.createEmptyConfiguration());
 
-                configurationRepository.save(data);
+        if(!configuration.getEmail().equals(""))
+            data.setEmail(configuration.getEmail());
+        if(!configuration.getPassword().equals(""))
+            data.setEmailPass(configuration.getPassword());
+        if(configuration.isEnabled() != data.isEmailEnable())
+            data.setEmailEnable(configuration.isEnabled());
 
-                return new ResponseEntity<>(new StatusModel("OK"), HttpStatus.OK);
-            }
-            return new ResponseEntity<>(new StatusModel("Configuration doesn't exists!"), HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-        return new ResponseEntity<>(new StatusModel("UNAUTHORIZED"), HttpStatus.UNAUTHORIZED);
+        configurationService.save(data);
+
+        return new ResponseEntity<>(new Status("OK", request.getServletPath()), HttpStatus.OK);
     }
     @RequestMapping(value = "/configuration", method = RequestMethod.GET)
-    public ResponseEntity<?> getConfiguration(HttpServletRequest httpServletRequest){
-        AdminData admin = getAdminAccount(httpServletRequest);
+    public ResponseEntity<?> getConfiguration(){
+        ConfigurationData data = configurationService.get()
+                .orElseThrow(() -> new ResourceNotFoundException("Configuration was not found!"));
 
-        if(admin != null){
-            ConfigurationData data = configurationRepository.findAll().get(0);
-
-            if(data != null) return new ResponseEntity<>(new ConfigurationResponse(data.getEmail(), data.isEmailEnable()), HttpStatus.OK);
-        }
-        return new ResponseEntity<>(new StatusModel("UNAUTHORIZED"), HttpStatus.UNAUTHORIZED);
+        return new ResponseEntity<>(new ConfigurationResponse(data.getEmail(), data.isEmailEnable()), HttpStatus.OK);
     }
-    @RequestMapping(value = "/check/smtp", method = RequestMethod.GET)
-    public ResponseEntity<?> getSmtpStatus(HttpServletRequest httpServletRequest){
-        ConfigurationData data = configurationRepository.findAll().get(0);
 
-        if(data != null && data.isEmailEnable()){
-            try {
-                mailService.checkStmpStatusMessage();
-                return new ResponseEntity<>(new StatusModel("Mail service is working well."), HttpStatus.OK);
-            } catch (Exception e) {
-                e.printStackTrace();
-                return new ResponseEntity<>(new StatusModel("Mail service isn't working."), HttpStatus.INTERNAL_SERVER_ERROR);
-            }
-        }else{
-            return new ResponseEntity<>(new StatusModel("Mail service is disabled!"), HttpStatus.OK);
+    @RequestMapping(value = "/check/smtp", method = RequestMethod.GET)
+    public ResponseEntity<?> getSmtpStatus(HttpServletRequest request){
+        ConfigurationData data = configurationService.get()
+                .orElseThrow(() -> new ResourceNotFoundException("Configuration was not found!"));
+
+        if(!data.isEmailEnable())
+            throw new BadRequestException("Mail service is disabled!");
+
+        try {
+            mailService.checkStmpStatusMessage();
+            return new ResponseEntity<>(new Status("Mail service is working well.", request.getServletPath()), HttpStatus.OK);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return new ResponseEntity<>(new Status("Mail service isn't working.", request.getServletPath()), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 }

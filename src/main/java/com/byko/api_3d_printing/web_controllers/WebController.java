@@ -1,9 +1,7 @@
 package com.byko.api_3d_printing.web_controllers;
 
 import com.byko.api_3d_printing.database.*;
-import com.byko.api_3d_printing.database.repository.ConversationRepository;
 import com.byko.api_3d_printing.database.repository.ImagesRepository;
-import com.byko.api_3d_printing.database.repository.ProjectsRepository;
 import com.byko.api_3d_printing.exceptions.ResourceNotFoundException;
 import com.byko.api_3d_printing.exceptions.UnauthorizedException;
 import com.byko.api_3d_printing.model.Status;
@@ -43,19 +41,13 @@ public class WebController {
 
     @Value("${file.image-dir}")
     private String IMAGES_DIRECTORY;
-
-    private ConversationRepository conversationRepository;
-    private ProjectsRepository projectsRepository;
     private ImagesRepository imagesRepository;
     private CaptchaValidation captchaValidator;
 
     private ProjectService projectService;
 
 
-    public WebController(ConversationRepository conversationRepository, ProjectsRepository projectsRepository,
-                         ImagesRepository imagesRepository, CaptchaValidation captchaValidator, ProjectService projectService){
-        this.conversationRepository = conversationRepository;
-        this.projectsRepository = projectsRepository;
+    public WebController(ImagesRepository imagesRepository, CaptchaValidation captchaValidator, ProjectService projectService){
         this.imagesRepository = imagesRepository;
         this.captchaValidator = captchaValidator;
         this.projectService = projectService;
@@ -119,7 +111,7 @@ public class WebController {
 
     @RequestMapping(value = "/project/data")
     public ResponseEntity<?> getProjectInformation(@RequestParam("projectid") String projectId) {
-        ProjectsData projectsData = projectsRepository.findByConversationKey(projectId)
+        ProjectsData projectsData = projectService.getByConversationKey(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project data was not found!"));
 
         return new ResponseEntity<>(projectsData, HttpStatus.OK );
