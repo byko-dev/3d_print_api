@@ -4,8 +4,6 @@ import com.byko.api_3d_printing.database.ConfigurationData;
 import com.byko.api_3d_printing.database.ConversationData;
 import com.byko.api_3d_printing.database.ProjectsData;
 import com.byko.api_3d_printing.database.enums.User;
-import com.byko.api_3d_printing.database.repository.ConfigurationRepository;
-import com.byko.api_3d_printing.database.repository.ConversationRepository;
 import com.byko.api_3d_printing.database.repository.ProjectsRepository;
 import com.byko.api_3d_printing.exceptions.BadRequestException;
 import com.byko.api_3d_printing.exceptions.ResourceNotFoundException;
@@ -24,6 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class ProjectService {
@@ -39,17 +38,18 @@ public class ProjectService {
     private String FRONTEND_URL;
 
     private final ProjectsRepository projectsRepository;
-    private final ConversationRepository conversationRepository;
     private final MailService mailService;
-    private final ConfigurationRepository configurationRepository;
+    private ConfigurationService configurationService;
+    private ConversationService conversationService;
 
 
-    public ProjectService(ProjectsRepository projectsRepository, ConversationRepository conversationRepository,
-                          MailService mailService, ConfigurationRepository configurationRepository){
+    public ProjectService(ProjectsRepository projectsRepository, MailService mailService,
+                          ConfigurationService configurationService,
+                          ConversationService conversationService){
         this.projectsRepository = projectsRepository;
-        this.conversationRepository = conversationRepository;
         this.mailService = mailService;
-        this.configurationRepository = configurationRepository;
+        this.conversationService = conversationService;
+        this.configurationService = configurationService;
     }
 
     public String create(MultipartFile file, String nameAndLastName, String email, String phoneNumber, String description, String address, String ipAddress){
@@ -77,9 +77,9 @@ public class ProjectService {
 
         projectsRepository.save(projectsData);
 
-        ConfigurationData data = configurationRepository.findAll().get(0);
+        ConfigurationData data = configurationService.get().orElseThrow(() -> new ResourceNotFoundException("Configuration was not found!"));
 
-        if(data != null && data.isEmailEnable()){
+        if(data.isEmailEnable()){
             try {
                 mailService.sendMessageWithLink(email, FRONTEND_URL + "project?projectid=" + randomStr);
             } catch (Exception e) {
@@ -117,7 +117,7 @@ public class ProjectService {
             conversationData.setDescription(description);
         }
 
-        conversationRepository.save(conversationData);
+        conversationService.save(conversationData);
 
         return new ResponseEntity<>(new StatusModel("OK"), HttpStatus.OK);
     }
@@ -132,7 +132,7 @@ public class ProjectService {
                 projectsData.getDescription(), User.USER, projectsData.getDownloadProjectFileLink(),
                 projectsData.getDate(), projectsData.getProjectFile(), projectsData.getNameAndLastName()));
 
-        List<ConversationData> conversationDataList = conversationRepository.findByConversationId(projectId);
+        List<ConversationData> conversationDataList = conversationService.getByConversationId(projectId);
 
         for(ConversationData conversationData : conversationDataList){
             conversationResponseList.add(new ConversationResponse(conversationData.getId(),
@@ -142,6 +142,23 @@ public class ProjectService {
                     projectsData.getNameAndLastName()));
         }
         return conversationResponseList;
+    }
+
+    public Optional<ProjectsData> getByConversationKey(String conversationKey){
+        return projectsRepository.findByConversationKey(conversationKey);
+    }
+
+    public void setOrderStatus(ProjectsData projectsData, int orderStatus){
+        projectsData.setOrderStatus(orderStatus);
+        projectsRepository.save(projectsData);
+    }
+
+    public List<ProjectsData> getAll(){
+        return projectsRepository.findAll();
+    }
+
+    public void delete(ProjectsData projectsData){
+        projectsRepository.delete(projectsData);
     }
 
 
