@@ -14,9 +14,9 @@ public class ImageData {
 
     @Id
     private String id;
-    private String imageFileName;
     private String imageAlt;
     private String title;
     private String description;
     private String date;
+    private String fileId;
 }

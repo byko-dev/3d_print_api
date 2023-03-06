@@ -1,7 +1,7 @@
 package com.byko.api_3d_printing.services;
 
 import com.byko.api_3d_printing.database.ConfigurationData;
-import com.byko.api_3d_printing.database.ConversationData;
+import com.byko.api_3d_printing.database.MessageData;
 import com.byko.api_3d_printing.database.ProjectsData;
 import com.byko.api_3d_printing.database.enums.User;
 import com.byko.api_3d_printing.database.repository.ProjectsRepository;
@@ -40,16 +40,19 @@ public class ProjectService {
     private final ProjectsRepository projectsRepository;
     private final MailService mailService;
     private ConfigurationService configurationService;
-    private ConversationService conversationService;
+    private MessageService messageService;
+
+    private FileService fileService;
 
 
     public ProjectService(ProjectsRepository projectsRepository, MailService mailService,
                           ConfigurationService configurationService,
-                          ConversationService conversationService){
+                          MessageService messageService, FileService fileService){
         this.projectsRepository = projectsRepository;
         this.mailService = mailService;
-        this.conversationService = conversationService;
+        this.messageService = messageService;
         this.configurationService = configurationService;
+        this.fileService = fileService;
     }
 
     public String create(MultipartFile file, String nameAndLastName, String email, String phoneNumber, String description, String address, String ipAddress){
@@ -58,11 +61,16 @@ public class ProjectService {
         ProjectsData projectsData = new ProjectsData();
 
         if(file != null){
-            //save uploaded file to directory
-            String fileName = Utils.saveFile(randomStr, file, FILE_DIRECTORY);
 
-            projectsData.setDownloadProjectFileLink(Utils.getDownloadLink(randomStr, fileName, DOMAIN_URL));
-            projectsData.setProjectFile(fileName);
+            //TODO: need refactoring this shit and check out
+            String id = fileService.uploadFile(file);
+
+            //save uploaded file to directory
+            //String fileName = Utils.saveFile(randomStr, file, FILE_DIRECTORY);
+
+            //projectsData.setDownloadProjectFileLink(Utils.getDownloadLink(randomStr, fileName, DOMAIN_URL));
+            projectsData.setProjectFileId(id);
+            projectsData.setFileName(file.getName());
         }
 
         projectsData.setDate(Utils.getCurrentDate());
@@ -74,6 +82,7 @@ public class ProjectService {
         projectsData.setAddress(address);
         projectsData.setOrderStatus(0);
         projectsData.setIpAddress(ipAddress);
+
 
         projectsRepository.save(projectsData);
 
@@ -100,24 +109,31 @@ public class ProjectService {
             throw new BadRequestException("One of properties such as file or content can not be null!");
 
 
-        ConversationData conversationData = new ConversationData();
-        conversationData.setData(new Date().toString());
-        conversationData.setConversationId(projectId);
-        conversationData.setUserType(userType);
-        conversationData.setIpAddress(ipAddress);
+        MessageData messageData = new MessageData();
+        messageData.setData(new Date().toString());
+        messageData.setConversationId(projectId);
+        messageData.setUserType(userType);
+        messageData.setIpAddress(ipAddress);
+
 
         if(multipartFile.isEmpty()){
-            String fileName = Utils.saveFile(projectId, multipartFile, FILE_DIRECTORY);
 
-            conversationData.setFile(fileName);
-            conversationData.setDownloadFileLink(Utils.getDownloadLink(projectId, fileName, DOMAIN_URL));
+            String id = fileService.uploadFile(multipartFile);
+
+            messageData.setFileId(id);
+            messageData.setFileName(multipartFile.getName());
+
+            //String fileName = Utils.saveFile(projectId, multipartFile, FILE_DIRECTORY);
+
+            //conversationData.setFile(fileName);
+            //conversationData.setDownloadFileLink(Utils.getDownloadLink(projectId, fileName, DOMAIN_URL));
         }
 
         if(description != null){
-            conversationData.setDescription(description);
+            messageData.setDescription(description);
         }
 
-        conversationService.save(conversationData);
+        messageService.save(messageData);
 
         return new ResponseEntity<>(new StatusModel("OK"), HttpStatus.OK);
     }
@@ -128,18 +144,17 @@ public class ProjectService {
         ProjectsData projectsData = projectsRepository.findByConversationKey(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not exist!"));
 
-        conversationResponseList.add(new ConversationResponse(projectsData.getId(), projectsData.getProjectFile(),
-                projectsData.getDescription(), User.USER, projectsData.getDownloadProjectFileLink(),
-                projectsData.getDate(), projectsData.getProjectFile(), projectsData.getNameAndLastName()));
+        conversationResponseList.add(new ConversationResponse(projectsData.getId(), projectsData.getProjectFileId(),
+                projectsData.getDescription(), User.USER,
+                projectsData.getDate(), projectsData.getFileName(), projectsData.getNameAndLastName()));
 
-        List<ConversationData> conversationDataList = conversationService.getByConversationId(projectId);
+        List<MessageData> conversationDataList = messageService.getByConversationId(projectId);
 
-        for(ConversationData conversationData : conversationDataList){
+        for(MessageData conversationData : conversationDataList){
             conversationResponseList.add(new ConversationResponse(conversationData.getId(),
-                    conversationData.getFile(), conversationData.getDescription(),
-                    conversationData.getUserType(), conversationData.getDownloadFileLink(),
-                    conversationData.getData(), conversationData.getFile(),
-                    projectsData.getNameAndLastName()));
+                    conversationData.getFileId(), conversationData.getDescription(),
+                    conversationData.getUserType(), conversationData.getData(),
+                    conversationData.getFileName(), projectsData.getNameAndLastName()));
         }
         return conversationResponseList;
     }

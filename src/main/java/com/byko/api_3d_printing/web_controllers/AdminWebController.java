@@ -4,20 +4,16 @@ import com.byko.api_3d_printing.database.repository.*;
 import com.byko.api_3d_printing.exceptions.BadRequestException;
 import com.byko.api_3d_printing.exceptions.ResourceNotFoundException;
 import com.byko.api_3d_printing.exceptions.UnauthorizedException;
-import com.byko.api_3d_printing.services.AdminService;
-import com.byko.api_3d_printing.services.ConfigurationService;
-import com.byko.api_3d_printing.services.ConversationService;
-import com.byko.api_3d_printing.services.ProjectService;
+import com.byko.api_3d_printing.services.*;
 import com.byko.api_3d_printing.smtp.MailService;
 import com.byko.api_3d_printing.utils.CaptchaValidation;
-import com.byko.api_3d_printing.utils.RandomString;
 import com.byko.api_3d_printing.utils.Utils;
 import com.byko.api_3d_printing.configuration.MongoUserDetails;
 import com.byko.api_3d_printing.configuration.jwt.JwtUtils;
 import com.byko.api_3d_printing.database.*;
 import com.byko.api_3d_printing.database.enums.User;
 import com.byko.api_3d_printing.model.*;
-import org.springframework.beans.factory.annotation.Value;
+import lombok.AllArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -34,13 +30,8 @@ import javax.validation.Valid;
 @CrossOrigin(origins = "*") // allow all origins
 @RestController
 @RequestMapping("/admin")
+@AllArgsConstructor
 public class AdminWebController {
-
-    @Value("${file.upload-dir}")
-    private String FILE_DIRECTORY;
-
-    @Value("${file.image-dir}")
-    private String IMAGES_DIRECTORY;
 
     private BCryptPasswordEncoder encoder;
     private JwtUtils jwtUtils;
@@ -49,32 +40,11 @@ public class AdminWebController {
     private ImagesRepository imagesRepository;
     private MailService mailService;
     private CaptchaValidation captchaValidator;
-
     private ProjectService projectService;
     private AdminService adminService;
     private ConfigurationService configurationService;
-    private ConversationService conversationService;
-
-
-    public AdminWebController(BCryptPasswordEncoder encoder, JwtUtils jwtUtils,
-                              AuthenticationManager authenticationManager, MongoUserDetails mongoUserDetails,
-                              ImagesRepository imagesRepository,
-                              MailService mailService, CaptchaValidation captchaValidator, ProjectService projectService,
-                              AdminService adminService, ConfigurationService configurationService, ConversationService conversationService){
-        this.encoder = encoder;
-        this.jwtUtils = jwtUtils;
-        this.authenticationManager = authenticationManager;
-        this.mongoUserDetails = mongoUserDetails;
-        this.imagesRepository = imagesRepository;
-        this.mailService = mailService;
-        this.captchaValidator = captchaValidator;
-        this.projectService = projectService;
-        this.adminService = adminService;
-        this.configurationService = configurationService;
-        this.conversationService = conversationService;
-    }
-
-
+    private MessageService messageService;
+    private FileService fileService;
 
     @RequestMapping(value = "/activity", method = RequestMethod.GET)
     public ResponseEntity<?> getLastTimeAdminActivity(){
@@ -147,8 +117,11 @@ public class AdminWebController {
         ProjectsData projectsData = projectService.getByConversationKey(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project data was not found!"));
 
-        Utils.removeProjectDirectory(FILE_DIRECTORY, projectsData.getConversationKey());
-        conversationService.deleteAllByConversationId(projectsData.getConversationKey());
+
+        //TODO: do something great
+
+        //Utils.removeProjectDirectory(FILE_DIRECTORY, projectsData.getConversationKey());
+        messageService.deleteAllByConversationId(projectsData.getConversationKey());
         projectService.delete(projectsData);
         return new ResponseEntity<>(new Status("OK", request.getServletPath()), HttpStatus.OK);
     }
@@ -171,9 +144,9 @@ public class AdminWebController {
         imageData.setDate(Utils.getCurrentDate());
         imageData.setImageAlt(alt);
 
-        RandomString randomString = new RandomString(12);
-        imageData.setImageFileName(
-                Utils.saveImages(IMAGES_DIRECTORY, file, randomString.nextString()));
+        String id = fileService.uploadFile(file);
+
+        imageData.setFileId(id);
 
         imagesRepository.save(imageData);
         return new ResponseEntity<>(new Status("OK", request.getServletPath()), HttpStatus.OK);
@@ -184,7 +157,7 @@ public class AdminWebController {
         ImageData imageData = imagesRepository.findById(imageId)
                 .orElseThrow(() -> new ResourceNotFoundException("Image was not found!"));
 
-        Utils.deleteImageFile(IMAGES_DIRECTORY, imageData.getImageFileName());
+        fileService.deleteFile(imageId);
         imagesRepository.delete(imageData);
         return new ResponseEntity<>(new Status("OK", request.getServletPath()), HttpStatus.OK);
     }
