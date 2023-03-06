@@ -7,19 +7,19 @@ import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-@Document(collection = "conversationData")
+@Document(collection = "messagesData")
 @AllArgsConstructor
 @NoArgsConstructor
 @Data
-public class ConversationData {
+public class MessageData {
 
     @Id
     private String id;
 
     private String conversationId;
     private String description;
-    private String file;
-    private String downloadFileLink;
+    private String fileId;
+    private String fileName;
     private String data;
     private User userType;
     private String ipAddress;

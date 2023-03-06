@@ -20,10 +20,10 @@ public class ProjectsData {
     private String numberPhone;
     private String email;
     private String description;
-    private String projectFile;
-    private String downloadProjectFileLink;
+    private String projectFileId;
     private String conversationKey;
     private String date;
     private Integer orderStatus;
     private String ipAddress;
+    private String fileName;
 }

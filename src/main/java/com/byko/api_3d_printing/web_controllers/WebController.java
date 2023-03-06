@@ -4,13 +4,14 @@ import com.byko.api_3d_printing.database.*;
 import com.byko.api_3d_printing.database.repository.ImagesRepository;
 import com.byko.api_3d_printing.exceptions.ResourceNotFoundException;
 import com.byko.api_3d_printing.exceptions.UnauthorizedException;
+import com.byko.api_3d_printing.model.LoadFile;
 import com.byko.api_3d_printing.model.Status;
+import com.byko.api_3d_printing.services.FileService;
 import com.byko.api_3d_printing.services.ProjectService;
 import com.byko.api_3d_printing.utils.CaptchaValidation;
 import com.byko.api_3d_printing.database.enums.User;
-import org.springframework.beans.factory.annotation.Value;
+import lombok.AllArgsConstructor;
 import org.springframework.core.io.ByteArrayResource;
-import org.springframework.core.io.InputStreamResource;
 import org.springframework.format.annotation.NumberFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -25,33 +26,20 @@ import javax.validation.Valid;
 import javax.validation.constraints.Email;
 import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
-import java.io.*;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+
 import java.util.Optional;
 
 @CrossOrigin(origins = "*") // allow all origins
 @RestController
 @RequestMapping("/user")
 @Validated
+@AllArgsConstructor
 public class WebController {
 
-    @Value("${file.upload-dir}")
-    private String FILE_DIRECTORY;
-
-    @Value("${file.image-dir}")
-    private String IMAGES_DIRECTORY;
     private ImagesRepository imagesRepository;
     private CaptchaValidation captchaValidator;
-
     private ProjectService projectService;
-
-
-    public WebController(ImagesRepository imagesRepository, CaptchaValidation captchaValidator, ProjectService projectService){
-        this.imagesRepository = imagesRepository;
-        this.captchaValidator = captchaValidator;
-        this.projectService = projectService;
-    }
+    private FileService fileService;
 
     @RequestMapping(value = "/create/project", method = RequestMethod.POST)
     public ResponseEntity<?> createConversationLink(@Valid @NotNull @NotEmpty @RequestParam String captcha,
@@ -73,21 +61,16 @@ public class WebController {
     }
 
     @RequestMapping(value = "/download", method = RequestMethod.GET)
-    public ResponseEntity<?> downloadFiles(@RequestParam("file") String fileStr, @RequestParam("key") String objectId){
-        try {
-            File file = new File(FILE_DIRECTORY + "/" + objectId + "/" + fileStr);
-            InputStreamResource resource = new InputStreamResource(new FileInputStream(file));
-            HttpHeaders headers = new HttpHeaders();
-            headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + file.getName());
-            return ResponseEntity.ok()
-                    .headers(headers)
-                    .contentLength(file.length())
-                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                    .body(resource);
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        }
-        return new ResponseEntity<>("", HttpStatus.BAD_REQUEST);
+    public ResponseEntity<?> downloadFiles(@RequestParam("id") String fileId){
+        LoadFile loadFile = fileService.download(fileId);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + loadFile.getFilename());
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(loadFile.getFileType()))
+                .headers(headers)
+                .contentLength(Long.parseLong(loadFile.getFileSize()))
+                .body(new ByteArrayResource(loadFile.getFile()));
     }
 
     @RequestMapping(value = "/send/response", method = RequestMethod.POST)
@@ -128,13 +111,15 @@ public class WebController {
         if(!imageData.isPresent())
             throw new ResourceNotFoundException("Image was not found!");
 
+        LoadFile loadFile = fileService.download(imageId);
+
         ByteArrayResource inputStream = null;
-        try {
+        /*try {
             inputStream = new ByteArrayResource(Files.readAllBytes(Paths.get(
                     IMAGES_DIRECTORY + imageData.get().getImageFileName())));
         } catch (IOException e) {
             e.printStackTrace();
-        }
-        return new ResponseEntity<>(inputStream, HttpStatus.OK);
+        }*/
+        return new ResponseEntity<>(new ByteArrayResource(loadFile.getFile()), HttpStatus.OK);
     }
 }
