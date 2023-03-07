@@ -6,15 +6,16 @@ import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-@Document(collection = "configuration")
+@Document(collection = "adminData")
 @AllArgsConstructor
 @NoArgsConstructor
 @Data
-public class ConfigurationData {
+public class AdminDAO {
 
     @Id
     private String id;
-    private String email;
-    private String emailPass;
-    private boolean emailEnable;
+
+    private String username;
+    private String password; //bcrypt
+    private Long lastTimeActivity;
 }

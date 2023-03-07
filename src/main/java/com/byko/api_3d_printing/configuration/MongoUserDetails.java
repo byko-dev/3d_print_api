@@ -1,6 +1,6 @@
 package com.byko.api_3d_printing.configuration;
 
-import com.byko.api_3d_printing.database.AdminData;
+import com.byko.api_3d_printing.database.AdminDAO;
 import com.byko.api_3d_printing.database.repository.AdminRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.authority.AuthorityUtils;
@@ -18,7 +18,7 @@ public class MongoUserDetails implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        AdminData adminData = adminRepository.findByUsername(username);
+        AdminDAO adminData = adminRepository.findByUsername(username);
 
         if(adminData != null){
             return new User(adminData.getUsername(), adminData.getPassword(), true, true, true, true,

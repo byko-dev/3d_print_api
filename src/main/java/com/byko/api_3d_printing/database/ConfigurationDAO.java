@@ -6,17 +6,15 @@ import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-@Document(collection = "imagesData")
+@Document(collection = "configuration")
 @AllArgsConstructor
 @NoArgsConstructor
 @Data
-public class ImageData {
+public class ConfigurationDAO {
 
     @Id
     private String id;
-    private String imageAlt;
-    private String title;
-    private String description;
-    private String date;
-    private String fileId;
+    private String email;
+    private String emailPass;
+    private boolean emailEnable;
 }

@@ -10,7 +10,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @AllArgsConstructor
 @NoArgsConstructor
 @Data
-public class ProjectsData {
+public class ProjectsDAO {
 
     @Id
     private String id;

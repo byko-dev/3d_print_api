@@ -1,17 +1,18 @@
 package com.byko.api_3d_printing.services;
 
-import com.byko.api_3d_printing.database.ConfigurationData;
-import com.byko.api_3d_printing.database.MessageData;
-import com.byko.api_3d_printing.database.ProjectsData;
+import com.byko.api_3d_printing.database.ConfigurationDAO;
+import com.byko.api_3d_printing.database.MessageDAO;
+import com.byko.api_3d_printing.database.ProjectsDAO;
 import com.byko.api_3d_printing.database.enums.User;
 import com.byko.api_3d_printing.database.repository.ProjectsRepository;
 import com.byko.api_3d_printing.exceptions.BadRequestException;
 import com.byko.api_3d_printing.exceptions.ResourceNotFoundException;
-import com.byko.api_3d_printing.model.ConversationResponse;
-import com.byko.api_3d_printing.model.StatusModel;
+import com.byko.api_3d_printing.model.MessageDTO;
+import com.byko.api_3d_printing.model.MessageDTOMapper;
+import com.byko.api_3d_printing.model.Status;
 import com.byko.api_3d_printing.smtp.MailService;
-import com.byko.api_3d_printing.utils.RandomString;
 import com.byko.api_3d_printing.utils.Utils;
+import org.bson.types.ObjectId;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -23,16 +24,12 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class ProjectService {
 
 
-    @Value("${file.upload-dir}")
-    private String FILE_DIRECTORY;
-
-    @Value("${domain.url}")
-    private String DOMAIN_URL;
 
     @Value("${front.url}")
     private String FRONTEND_URL;
@@ -44,37 +41,35 @@ public class ProjectService {
 
     private FileService fileService;
 
+    private MessageDTOMapper messageDTOMapper;
+
 
     public ProjectService(ProjectsRepository projectsRepository, MailService mailService,
                           ConfigurationService configurationService,
-                          MessageService messageService, FileService fileService){
+                          MessageService messageService, FileService fileService, MessageDTOMapper messageDTOMapper){
         this.projectsRepository = projectsRepository;
         this.mailService = mailService;
         this.messageService = messageService;
         this.configurationService = configurationService;
         this.fileService = fileService;
+        this.messageDTOMapper = messageDTOMapper;
     }
 
     public String create(MultipartFile file, String nameAndLastName, String email, String phoneNumber, String description, String address, String ipAddress){
-        RandomString random = new RandomString(14);
-        String randomStr = random.nextString();
-        ProjectsData projectsData = new ProjectsData();
+        ProjectsDAO projectsData = new ProjectsDAO();
+
+        ObjectId conversation_key = new ObjectId();
 
         if(file != null){
 
-            //TODO: need refactoring this shit and check out
             String id = fileService.uploadFile(file);
 
-            //save uploaded file to directory
-            //String fileName = Utils.saveFile(randomStr, file, FILE_DIRECTORY);
-
-            //projectsData.setDownloadProjectFileLink(Utils.getDownloadLink(randomStr, fileName, DOMAIN_URL));
             projectsData.setProjectFileId(id);
             projectsData.setFileName(file.getName());
         }
 
         projectsData.setDate(Utils.getCurrentDate());
-        projectsData.setConversationKey(randomStr);
+        projectsData.setConversationKey(conversation_key.toString());
         projectsData.setNameAndLastName(nameAndLastName);
         projectsData.setEmail(email);
         projectsData.setNumberPhone(phoneNumber);
@@ -86,21 +81,21 @@ public class ProjectService {
 
         projectsRepository.save(projectsData);
 
-        ConfigurationData data = configurationService.get().orElseThrow(() -> new ResourceNotFoundException("Configuration was not found!"));
+        ConfigurationDAO data = configurationService.get().orElseThrow(() -> new ResourceNotFoundException("Configuration was not found!"));
 
         if(data.isEmailEnable()){
             try {
-                mailService.sendMessageWithLink(email, FRONTEND_URL + "project?projectid=" + randomStr);
+                mailService.sendMessageWithLink(email, FRONTEND_URL + "project?projectid=" + conversation_key);
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
-        return randomStr;
+        return conversation_key.toString();
     }
 
 
     public ResponseEntity<?> sendResponse(String projectId, String description, MultipartFile multipartFile,
-                                          String ipAddress, User userType){
+                                          String ipAddress, User userType, String path){
 
         if(!projectsRepository.findByConversationKey(projectId).isPresent())
             throw new ResourceNotFoundException("Project was not found!");
@@ -109,7 +104,7 @@ public class ProjectService {
             throw new BadRequestException("One of properties such as file or content can not be null!");
 
 
-        MessageData messageData = new MessageData();
+        MessageDAO messageData = new MessageDAO();
         messageData.setData(new Date().toString());
         messageData.setConversationId(projectId);
         messageData.setUserType(userType);
@@ -122,11 +117,6 @@ public class ProjectService {
 
             messageData.setFileId(id);
             messageData.setFileName(multipartFile.getName());
-
-            //String fileName = Utils.saveFile(projectId, multipartFile, FILE_DIRECTORY);
-
-            //conversationData.setFile(fileName);
-            //conversationData.setDownloadFileLink(Utils.getDownloadLink(projectId, fileName, DOMAIN_URL));
         }
 
         if(description != null){
@@ -135,44 +125,42 @@ public class ProjectService {
 
         messageService.save(messageData);
 
-        return new ResponseEntity<>(new StatusModel("OK"), HttpStatus.OK);
+        return new ResponseEntity<>(new Status("OK", path), HttpStatus.OK);
     }
 
-    public List<ConversationResponse> getConversations(String projectId){
-        List<ConversationResponse> conversationResponseList = new ArrayList<>();
+    public List<MessageDTO> getConversations(String projectId){
+        List<MessageDTO> messageList = new ArrayList<>();
 
-        ProjectsData projectsData = projectsRepository.findByConversationKey(projectId)
+        ProjectsDAO projectsData = projectsRepository.findByConversationKey(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not exist!"));
 
-        conversationResponseList.add(new ConversationResponse(projectsData.getId(), projectsData.getProjectFileId(),
-                projectsData.getDescription(), User.USER,
-                projectsData.getDate(), projectsData.getFileName(), projectsData.getNameAndLastName()));
+        messageList.add(new MessageDTO(projectsData.getId(),
+                projectsData.getProjectFileId(),
+                projectsData.getDescription(),
+                User.USER,
+                projectsData.getDate(),
+                projectsData.getFileName(),
+                projectsData.getNameAndLastName()));
 
-        List<MessageData> conversationDataList = messageService.getByConversationId(projectId);
-
-        for(MessageData conversationData : conversationDataList){
-            conversationResponseList.add(new ConversationResponse(conversationData.getId(),
-                    conversationData.getFileId(), conversationData.getDescription(),
-                    conversationData.getUserType(), conversationData.getData(),
-                    conversationData.getFileName(), projectsData.getNameAndLastName()));
-        }
-        return conversationResponseList;
+        messageList
+                .addAll(messageService.getByConversationId(projectId).stream().map(messageDTOMapper).collect(Collectors.toList()));
+        return messageList;
     }
 
-    public Optional<ProjectsData> getByConversationKey(String conversationKey){
+    public Optional<ProjectsDAO> getByConversationKey(String conversationKey){
         return projectsRepository.findByConversationKey(conversationKey);
     }
 
-    public void setOrderStatus(ProjectsData projectsData, int orderStatus){
+    public void setOrderStatus(ProjectsDAO projectsData, int orderStatus){
         projectsData.setOrderStatus(orderStatus);
         projectsRepository.save(projectsData);
     }
 
-    public List<ProjectsData> getAll(){
+    public List<ProjectsDAO> getAll(){
         return projectsRepository.findAll();
     }
 
-    public void delete(ProjectsData projectsData){
+    public void delete(ProjectsDAO projectsData){
         projectsRepository.delete(projectsData);
     }
 

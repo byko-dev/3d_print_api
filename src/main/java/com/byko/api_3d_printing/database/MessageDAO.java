@@ -11,7 +11,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @AllArgsConstructor
 @NoArgsConstructor
 @Data
-public class MessageData {
+public class MessageDAO {
 
     @Id
     private String id;
