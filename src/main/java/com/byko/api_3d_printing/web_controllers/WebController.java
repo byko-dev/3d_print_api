@@ -82,7 +82,7 @@ public class WebController {
         if(!captchaValidator.isValid(captcha))
             throw new UnauthorizedException("Captcha verification error!");
 
-        return projectService.sendResponse(projectid, description, file, request.getRemoteAddr(), User.USER);
+        return projectService.sendResponse(projectid, description, file, request.getRemoteAddr(), User.USER, request.getServletPath());
     }
 
 

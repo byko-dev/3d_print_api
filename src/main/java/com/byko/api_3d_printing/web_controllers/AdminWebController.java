@@ -83,7 +83,7 @@ public class AdminWebController {
                                                    @RequestParam String description,
                                                    @RequestParam MultipartFile file,
                                                    HttpServletRequest request){
-        return projectService.sendResponse(projectid, description, file, request.getRemoteAddr(), User.ADMIN);
+        return projectService.sendResponse(projectid, description, file, request.getRemoteAddr(), User.ADMIN, request.getServletPath());
     }
 
     @RequestMapping(value = "/projects/list", method = RequestMethod.GET)

@@ -8,7 +8,7 @@ import com.byko.api_3d_printing.database.repository.ProjectsRepository;
 import com.byko.api_3d_printing.exceptions.BadRequestException;
 import com.byko.api_3d_printing.exceptions.ResourceNotFoundException;
 import com.byko.api_3d_printing.model.ConversationResponse;
-import com.byko.api_3d_printing.model.StatusModel;
+import com.byko.api_3d_printing.model.Status;
 import com.byko.api_3d_printing.smtp.MailService;
 import com.byko.api_3d_printing.utils.RandomString;
 import com.byko.api_3d_printing.utils.Utils;
@@ -90,7 +90,7 @@ public class ProjectService {
 
 
     public ResponseEntity<?> sendResponse(String projectId, String description, MultipartFile multipartFile,
-                                          String ipAddress, User userType){
+                                          String ipAddress, User userType, String path){
 
         if(!projectsRepository.findByConversationKey(projectId).isPresent())
             throw new ResourceNotFoundException("Project was not found!");
@@ -120,7 +120,7 @@ public class ProjectService {
 
         messageService.save(messageData);
 
-        return new ResponseEntity<>(new StatusModel("OK"), HttpStatus.OK);
+        return new ResponseEntity<>(new Status("OK", path), HttpStatus.OK);
     }
 
     public List<ConversationResponse> getConversations(String projectId){

@@ -1,20 +1,13 @@
 package com.byko.api_3d_printing.model;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@AllArgsConstructor
+@NoArgsConstructor
+@Data
 public class LastTimeActiveResponse {
 
     public long lastTimeActive;
-
-    public LastTimeActiveResponse(){}
-
-    public LastTimeActiveResponse(long lastTimeActive) {
-        this.lastTimeActive = lastTimeActive;
-    }
-
-    public long getLastTimeActive() {
-        return lastTimeActive;
-    }
-
-    public void setLastTimeActive(long lastTimeActive) {
-        this.lastTimeActive = lastTimeActive;
-    }
 }
