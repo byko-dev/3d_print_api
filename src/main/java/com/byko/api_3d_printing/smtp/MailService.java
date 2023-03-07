@@ -1,7 +1,8 @@
 package com.byko.api_3d_printing.smtp;
 
-import com.byko.api_3d_printing.database.ConfigurationData;
+import com.byko.api_3d_printing.database.ConfigurationDAO;
 import com.byko.api_3d_printing.database.repository.ConfigurationRepository;
+import lombok.AllArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
@@ -14,9 +15,9 @@ import javax.mail.internet.MimeMessage;
 import java.util.Properties;
 
 @Service
+@AllArgsConstructor
 public class MailService {
 
-    @Autowired
     private ConfigurationRepository configurationRepository;
 
     private JavaMailSender getJavaMailSender(String email, String password) {
@@ -36,7 +37,7 @@ public class MailService {
     }
 
     public void checkStmpStatusMessage() throws MessagingException {
-        ConfigurationData data = configurationRepository.findAll().get(0);
+        ConfigurationDAO data = configurationRepository.findAll().get(0);
 
         JavaMailSender javaMailSender = getJavaMailSender(data.getEmail(), data.getEmailPass());
         MimeMessage mimeMessage = javaMailSender.createMimeMessage();
@@ -49,7 +50,7 @@ public class MailService {
 
     @Async
     public void sendMessageWithLink(String email, String link) throws MessagingException {
-        ConfigurationData data = configurationRepository.findAll().get(0);
+        ConfigurationDAO data = configurationRepository.findAll().get(0);
 
         JavaMailSender javaMailSender = getJavaMailSender(data.getEmail(), data.getEmailPass());
         MimeMessage mimeMessage = javaMailSender.createMimeMessage();

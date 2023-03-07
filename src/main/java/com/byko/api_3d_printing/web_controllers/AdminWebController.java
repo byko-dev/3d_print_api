@@ -48,10 +48,10 @@ public class AdminWebController {
 
     @RequestMapping(value = "/activity", method = RequestMethod.GET)
     public ResponseEntity<?> getLastTimeAdminActivity(){
-        AdminData adminData = adminService.getLastActiveAdminData();
+        AdminDAO adminData = adminService.getLastActiveAdminData();
         Long lastTimeActive = System.currentTimeMillis() - adminData.getLastTimeActivity();
 
-        return new ResponseEntity<>(new LastTimeActiveResponse((lastTimeActive/60000)), HttpStatus.OK);
+        return new ResponseEntity<>(new LastTimeActiveDTO((lastTimeActive/60000)), HttpStatus.OK);
     }
 
     @RequestMapping(value = "/token/valid", method = RequestMethod.GET)
@@ -60,22 +60,20 @@ public class AdminWebController {
     }
 
     @RequestMapping(value = "/login", method = RequestMethod.POST)
-    public ResponseEntity<?> getJwtToken(@RequestBody LoginRequest loginRequest){
-        if(!captchaValidator.isValid(loginRequest.getCaptchaResponse()))
+    public ResponseEntity<?> getJwtToken(@RequestBody LoginDTO loginRequest){
+        if(!captchaValidator.isValid(loginRequest.captchaResponse()))
             throw new UnauthorizedException("Captcha verification error!");
 
         try{
             authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword()));
+                    new UsernamePasswordAuthenticationToken(loginRequest.username(), loginRequest.password()));
         }catch(BadCredentialsException e){
             throw new UnauthorizedException("Login failed!");
         }
-        final UserDetails userDetails = mongoUserDetails.loadUserByUsername(loginRequest.getUsername());
+        final UserDetails userDetails = mongoUserDetails.loadUserByUsername(loginRequest.username());
         final String jwt = jwtUtils.generateToken(userDetails);
 
-        adminService.setAdminLastActivity(adminService.getByUsername(loginRequest.getUsername()));
-
-        return new ResponseEntity<>(new AuthenticationResponse(jwt), HttpStatus.OK);
+        return new ResponseEntity<>(new AuthenticationDTO(jwt), HttpStatus.OK);
     }
 
     @RequestMapping(value = "/send/response", method = RequestMethod.POST)
@@ -92,29 +90,29 @@ public class AdminWebController {
     }
 
     @RequestMapping(value = "/change/project/status", method = RequestMethod.PUT)
-    public ResponseEntity<?> changeProjectStatus(@Valid @RequestBody ChangeStatusRequest changeStatusRequest, HttpServletRequest request){
-        ProjectsData projectsData = projectService.getByConversationKey(changeStatusRequest.getProjectId())
+    public ResponseEntity<?> changeProjectStatus(@Valid @RequestBody ChangeStatusDTO changeStatusRequest, HttpServletRequest request){
+        ProjectsDAO projectsData = projectService.getByConversationKey(changeStatusRequest.projectId())
                 .orElseThrow(() -> new ResourceNotFoundException("Project data was not found!"));
 
-        projectService.setOrderStatus(projectsData, changeStatusRequest.getNewStatus());
-        return new ResponseEntity<>(new Status(changeStatusRequest.getNewStatus().toString(), request.getServletPath()), HttpStatus.OK);
+        projectService.setOrderStatus(projectsData, changeStatusRequest.newStatus());
+        return new ResponseEntity<>(new Status(changeStatusRequest.newStatus().toString(), request.getServletPath()), HttpStatus.OK);
     }
 
     @RequestMapping(value = "/change/password", method = RequestMethod.PUT)
-    public ResponseEntity<?> adminChangePasswordRequest(@RequestBody ChangePasswordRequest changePasswordRequest, HttpServletRequest request){
-        AdminData adminData = adminService.getAdminAccount(request);
+    public ResponseEntity<?> adminChangePasswordRequest(@RequestBody ChangePasswordDTO changePasswordRequest, HttpServletRequest request){
+        AdminDAO adminData = adminService.getAdminAccount(request);
 
-        if(!encoder.matches(changePasswordRequest.getPassword(), adminData.getPassword()))
+        if(!encoder.matches(changePasswordRequest.password(), adminData.getPassword()))
             throw new BadRequestException("Passwords don't match");
 
-        adminService.changePassword(adminData, changePasswordRequest.getPassword());
+        adminService.changePassword(adminData, changePasswordRequest.password());
 
         return new ResponseEntity<>(new Status("OK", request.getServletPath()), HttpStatus.OK);
     }
 
     @RequestMapping(value = "/remove/project", method = RequestMethod.DELETE)
     public ResponseEntity<?> removeProject(@RequestParam("projectid") String projectId, HttpServletRequest request){
-        ProjectsData projectsData = projectService.getByConversationKey(projectId)
+        ProjectsDAO projectsData = projectService.getByConversationKey(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project data was not found!"));
 
 
@@ -137,7 +135,7 @@ public class AdminWebController {
         if(file == null || title == null)
             throw new BadRequestException("Image and title of your project is required!");
 
-        ImageData imageData = new ImageData();
+        ImageDAO imageData = new ImageDAO();
 
         imageData.setDescription(description);
         imageData.setTitle(title);
@@ -154,7 +152,7 @@ public class AdminWebController {
 
     @RequestMapping(value = "/image/delete", method = RequestMethod.DELETE)
     public ResponseEntity<?> deleteImage(@RequestParam("imageid") String imageId, HttpServletRequest request){
-        ImageData imageData = imagesRepository.findById(imageId)
+        ImageDAO imageData = imagesRepository.findById(imageId)
                 .orElseThrow(() -> new ResourceNotFoundException("Image was not found!"));
 
         fileService.deleteFile(imageId);
@@ -170,7 +168,7 @@ public class AdminWebController {
                                              @RequestParam boolean changeDate,
                                              HttpServletRequest request){
 
-        ImageData imageData = imagesRepository.findById(id)
+        ImageDAO imageData = imagesRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Image was not found!"));
 
         if(title != null && !title.equals("")) imageData.setTitle(title);
@@ -185,16 +183,16 @@ public class AdminWebController {
     }
 
     @RequestMapping(value = "/configuration/update", method = RequestMethod.POST)
-    public ResponseEntity<?> changeConfiguration(@RequestBody ConfigurationUpdate configuration, HttpServletRequest request){
-        ConfigurationData data = configurationService.get()
+    public ResponseEntity<?> changeConfiguration(@RequestBody ConfigurationUpdateDTO configuration, HttpServletRequest request){
+        ConfigurationDAO data = configurationService.get()
                 .orElse(configurationService.createEmptyConfiguration());
 
-        if(!configuration.getEmail().equals(""))
-            data.setEmail(configuration.getEmail());
-        if(!configuration.getPassword().equals(""))
-            data.setEmailPass(configuration.getPassword());
-        if(configuration.isEnabled() != data.isEmailEnable())
-            data.setEmailEnable(configuration.isEnabled());
+        if(!configuration.email().equals(""))
+            data.setEmail(configuration.email());
+        if(!configuration.password().equals(""))
+            data.setEmailPass(configuration.password());
+        if(configuration.enabled() != data.isEmailEnable())
+            data.setEmailEnable(configuration.enabled());
 
         configurationService.save(data);
 
@@ -202,15 +200,15 @@ public class AdminWebController {
     }
     @RequestMapping(value = "/configuration", method = RequestMethod.GET)
     public ResponseEntity<?> getConfiguration(){
-        ConfigurationData data = configurationService.get()
+        ConfigurationDAO data = configurationService.get()
                 .orElseThrow(() -> new ResourceNotFoundException("Configuration was not found!"));
 
-        return new ResponseEntity<>(new ConfigurationResponse(data.getEmail(), data.isEmailEnable()), HttpStatus.OK);
+        return new ResponseEntity<>(new ConfigurationDTO(data.getEmail(), data.isEmailEnable()), HttpStatus.OK);
     }
 
     @RequestMapping(value = "/check/smtp", method = RequestMethod.GET)
     public ResponseEntity<?> getSmtpStatus(HttpServletRequest request){
-        ConfigurationData data = configurationService.get()
+        ConfigurationDAO data = configurationService.get()
                 .orElseThrow(() -> new ResourceNotFoundException("Configuration was not found!"));
 
         if(!data.isEmailEnable())

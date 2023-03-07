@@ -1,6 +1,6 @@
 package com.byko.api_3d_printing.services;
 
-import com.byko.api_3d_printing.database.MessageData;
+import com.byko.api_3d_printing.database.MessageDAO;
 import com.byko.api_3d_printing.database.repository.MessageRepository;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,11 +17,11 @@ public class MessageService {
         messageRepository.deleteAllByConversationId(conversationId);
     }
 
-    public void save(MessageData conversationData){
+    public void save(MessageDAO conversationData){
         messageRepository.save(conversationData);
     }
 
-    public List<MessageData> getByConversationId(String id){
+    public List<MessageDAO> getByConversationId(String id){
         return messageRepository.findByConversationId(id);
     }
 

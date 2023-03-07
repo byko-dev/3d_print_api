@@ -6,16 +6,17 @@ import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-@Document(collection = "adminData")
+@Document(collection = "imagesData")
 @AllArgsConstructor
 @NoArgsConstructor
 @Data
-public class AdminData {
+public class ImageDAO {
 
     @Id
     private String id;
-
-    private String username;
-    private String password; //bcrypt
-    private Long lastTimeActivity;
+    private String imageAlt;
+    private String title;
+    private String description;
+    private String date;
+    private String fileId;
 }

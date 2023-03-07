@@ -1,6 +1,6 @@
 package com.byko.api_3d_printing.services;
 
-import com.byko.api_3d_printing.database.ConfigurationData;
+import com.byko.api_3d_printing.database.ConfigurationDAO;
 import com.byko.api_3d_printing.database.repository.ConfigurationRepository;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -13,12 +13,12 @@ public class ConfigurationService {
 
     private final ConfigurationRepository configurationRepository;
 
-    public Optional<ConfigurationData> get(){
+    public Optional<ConfigurationDAO> get(){
         return Optional.of(configurationRepository.findAll().get(0));
     }
 
-    public ConfigurationData createEmptyConfiguration(){
-        ConfigurationData configurationData = new ConfigurationData();
+    public ConfigurationDAO createEmptyConfiguration(){
+        ConfigurationDAO configurationData = new ConfigurationDAO();
         configurationData.setEmail("");
         configurationData.setEmailPass("");
         configurationData.setEmailEnable(false);
@@ -26,7 +26,7 @@ public class ConfigurationService {
         return configurationRepository.save(configurationData);
     }
 
-    public void save(ConfigurationData configurationData){
+    public void save(ConfigurationDAO configurationData){
         configurationRepository.save(configurationData);
     }
 

@@ -94,7 +94,7 @@ public class WebController {
 
     @RequestMapping(value = "/project/data")
     public ResponseEntity<?> getProjectInformation(@RequestParam("projectid") String projectId) {
-        ProjectsData projectsData = projectService.getByConversationKey(projectId)
+        ProjectsDAO projectsData = projectService.getByConversationKey(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project data was not found!"));
 
         return new ResponseEntity<>(projectsData, HttpStatus.OK );
@@ -107,19 +107,12 @@ public class WebController {
 
     @RequestMapping(value = "/image", method = RequestMethod.GET)
     public ResponseEntity<?> getImageById(@RequestParam("imageid") String imageId){
-        Optional<ImageData> imageData = imagesRepository.findById(imageId);
+        Optional<ImageDAO> imageData = imagesRepository.findById(imageId);
         if(!imageData.isPresent())
             throw new ResourceNotFoundException("Image was not found!");
 
         LoadFile loadFile = fileService.download(imageId);
 
-        ByteArrayResource inputStream = null;
-        /*try {
-            inputStream = new ByteArrayResource(Files.readAllBytes(Paths.get(
-                    IMAGES_DIRECTORY + imageData.get().getImageFileName())));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }*/
         return new ResponseEntity<>(new ByteArrayResource(loadFile.getFile()), HttpStatus.OK);
     }
 }
