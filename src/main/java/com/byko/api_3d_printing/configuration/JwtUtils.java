@@ -1,4 +1,4 @@
-package com.byko.api_3d_printing.configuration.jwt;
+package com.byko.api_3d_printing.configuration;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;

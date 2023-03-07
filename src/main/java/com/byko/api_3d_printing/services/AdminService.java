@@ -1,6 +1,6 @@
 package com.byko.api_3d_printing.services;
 
-import com.byko.api_3d_printing.configuration.jwt.JwtUtils;
+import com.byko.api_3d_printing.configuration.JwtUtils;
 import com.byko.api_3d_printing.database.AdminData;
 import com.byko.api_3d_printing.database.repository.AdminRepository;
 import lombok.AllArgsConstructor;

@@ -28,11 +28,6 @@ import java.util.Optional;
 public class ProjectService {
 
 
-    @Value("${file.upload-dir}")
-    private String FILE_DIRECTORY;
-
-    @Value("${domain.url}")
-    private String DOMAIN_URL;
 
     @Value("${front.url}")
     private String FRONTEND_URL;
@@ -62,13 +57,8 @@ public class ProjectService {
 
         if(file != null){
 
-            //TODO: need refactoring this shit and check out
             String id = fileService.uploadFile(file);
 
-            //save uploaded file to directory
-            //String fileName = Utils.saveFile(randomStr, file, FILE_DIRECTORY);
-
-            //projectsData.setDownloadProjectFileLink(Utils.getDownloadLink(randomStr, fileName, DOMAIN_URL));
             projectsData.setProjectFileId(id);
             projectsData.setFileName(file.getName());
         }
@@ -122,11 +112,6 @@ public class ProjectService {
 
             messageData.setFileId(id);
             messageData.setFileName(multipartFile.getName());
-
-            //String fileName = Utils.saveFile(projectId, multipartFile, FILE_DIRECTORY);
-
-            //conversationData.setFile(fileName);
-            //conversationData.setDownloadFileLink(Utils.getDownloadLink(projectId, fileName, DOMAIN_URL));
         }
 
         if(description != null){

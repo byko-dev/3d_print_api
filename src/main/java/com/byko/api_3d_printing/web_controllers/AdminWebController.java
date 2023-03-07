@@ -9,7 +9,7 @@ import com.byko.api_3d_printing.smtp.MailService;
 import com.byko.api_3d_printing.utils.CaptchaValidation;
 import com.byko.api_3d_printing.utils.Utils;
 import com.byko.api_3d_printing.configuration.MongoUserDetails;
-import com.byko.api_3d_printing.configuration.jwt.JwtUtils;
+import com.byko.api_3d_printing.configuration.JwtUtils;
 import com.byko.api_3d_printing.database.*;
 import com.byko.api_3d_printing.database.enums.User;
 import com.byko.api_3d_printing.model.*;
@@ -78,7 +78,7 @@ public class AdminWebController {
         return new ResponseEntity<>(new AuthenticationResponse(jwt), HttpStatus.OK);
     }
 
-    @RequestMapping(value = "/admin/send/response", method = RequestMethod.POST)
+    @RequestMapping(value = "/send/response", method = RequestMethod.POST)
     public ResponseEntity<?> sendResponseForClient(@RequestParam String projectid,
                                                    @RequestParam String description,
                                                    @RequestParam MultipartFile file,

@@ -1,79 +1,62 @@
 package com.byko.api_3d_printing.configuration;
 
-import com.byko.api_3d_printing.configuration.jwt.JwtRequestFilter;
+import lombok.AllArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
 @EnableWebSecurity
-public class SecurityConfiguration extends WebSecurityConfigurerAdapter {
+@AllArgsConstructor
+public class SecurityConfiguration {
 
-    @Autowired
     private MongoUserDetails mongoUserDetails;
-
-    @Autowired
-    private JwtRequestFilter jwtRequestFilter;
+    private AuthEntryPointJwt unauthorizedHandler;
 
     @Autowired
     public void configureAuthentication(AuthenticationManagerBuilder auth) throws Exception {
         auth.userDetailsService(mongoUserDetails);
     }
 
-    @Override
     @Bean
-    public AuthenticationManager authenticationManagerBean() throws Exception {
-        return super.authenticationManagerBean();
+    public BCryptPasswordEncoder passwordEncoder()
+    {
+        return new BCryptPasswordEncoder();
     }
 
 
+    @Bean
+    public AuthenticationManager authenticationManagerBean(AuthenticationConfiguration authenticationConfiguration) throws Exception {
+        return authenticationConfiguration.getAuthenticationManager();
+    }
+    @Bean
+    public JwtRequestFilter authTokenFilter(){
+        return new JwtRequestFilter();
+    }
 
-    @Override
-    protected void configure(HttpSecurity httpSecurity) throws Exception {
-        httpSecurity.csrf().disable();
-        httpSecurity.cors();
-
-        httpSecurity.sessionManagement()
-                .sessionCreationPolicy(SessionCreationPolicy.STATELESS);
-
-        httpSecurity.authorizeRequests()
-                // Our public endpoints
-                .antMatchers(HttpMethod.GET,
-                        "/project/conversation",
-                        "/project/data",
-                        "/download",
-                        "/activity",
-                        "/images",
-                        "/image").permitAll()
-
-                .antMatchers(HttpMethod.POST,
-                "/create/project",
-                        "/send/response",
-                        "/login"
-                ).permitAll()
-
-                //Only admin endpoints
-                .antMatchers("/send/response/admin",
-                        "/change/project/status",
-                        "/change/password",
-                        "/remove/project",
-                        "/projects/list",
-                        "/image/update",
-                        "/image/delete",
-                        "/image/add",
-                        "/token/valid").hasRole("ADMIN")
-                .anyRequest().authenticated();
-
-        httpSecurity.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
-        // disable page caching
-        httpSecurity.headers().cacheControl();
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity httpSecurity) throws Exception {
+        return httpSecurity
+                .formLogin(AbstractHttpConfigurer::disable).cors().and()
+                .csrf(AbstractHttpConfigurer::disable)
+                .authorizeHttpRequests((request) ->
+                        request.antMatchers("/user/**").permitAll()
+                                .antMatchers("/admin/**").authenticated())
+                .addFilterBefore(authTokenFilter(), UsernamePasswordAuthenticationFilter.class)
+                .exceptionHandling((exception) -> exception.authenticationEntryPoint(unauthorizedHandler))
+                .sessionManagement((management) -> management.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .headers(HeadersConfigurer::cacheControl) /* disable page caching */
+                .build();
     }
 }

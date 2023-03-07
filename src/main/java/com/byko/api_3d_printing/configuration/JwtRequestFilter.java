@@ -1,6 +1,5 @@
-package com.byko.api_3d_printing.configuration.jwt;
+package com.byko.api_3d_printing.configuration;
 
-import com.byko.api_3d_printing.configuration.MongoUserDetails;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
